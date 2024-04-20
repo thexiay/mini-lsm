@@ -26,6 +26,8 @@ pub struct MemTable {
     approximate_size: Arc<AtomicUsize>,
 }
 
+pub const TOMESTONE: &[u8] = &[];
+
 /// Create a bound of `Bytes` from a bound of `&[u8]`.
 pub(crate) fn map_bound(bound: Bound<&[u8]>) -> Bound<Bytes> {
     match bound {
@@ -37,8 +39,13 @@ pub(crate) fn map_bound(bound: Bound<&[u8]>) -> Bound<Bytes> {
 
 impl MemTable {
     /// Create a new mem-table.
-    pub fn create(_id: usize) -> Self {
-        unimplemented!()
+    pub fn create(id: usize) -> Self {
+        MemTable {
+            map: Arc::new(SkipMap::new()),
+            wal: None,
+            id: id,
+            approximate_size: Arc::new(AtomicUsize::new(0)),
+        }
     }
 
     /// Create a new mem-table with WAL
@@ -68,16 +75,23 @@ impl MemTable {
     }
 
     /// Get a value by key.
-    pub fn get(&self, _key: &[u8]) -> Option<Bytes> {
-        unimplemented!()
+    pub fn get(&self, key: &[u8]) -> Option<Bytes> {
+        self.map
+            .get(&Bytes::copy_from_slice(key))
+            .map(|f| f.value().clone())
     }
 
     /// Put a key-value pair into the mem-table.
     ///
     /// In week 1, day 1, simply put the key-value pair into the skipmap.
     /// In week 2, day 6, also flush the data to WAL.
-    pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
-        unimplemented!()
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        let estimated_size = key.len() + value.len();
+        self.approximate_size
+            .fetch_add(estimated_size, std::sync::atomic::Ordering::Relaxed);
+        self.map
+            .insert(Bytes::copy_from_slice(key), Bytes::copy_from_slice(value));
+        Ok(())
     }
 
     pub fn sync_wal(&self) -> Result<()> {
@@ -101,6 +115,7 @@ impl MemTable {
         self.id
     }
 
+    /// Use for memtable flush to immutable memtable
     pub fn approximate_size(&self) -> usize {
         self.approximate_size
             .load(std::sync::atomic::Ordering::Relaxed)

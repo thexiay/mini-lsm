@@ -17,7 +17,7 @@ use crate::compact::{
 };
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
-use crate::mem_table::MemTable;
+use crate::mem_table::{MemTable, TOMESTONE};
 use crate::mvcc::LsmMvccInner;
 use crate::table::SsTable;
 
@@ -28,6 +28,7 @@ pub type BlockCache = moka::sync::Cache<(usize, usize), Arc<Block>>;
 pub struct LsmStorageState {
     /// The current memtable.
     pub memtable: Arc<MemTable>,
+
     /// Immutable memtables, from latest to earliest.
     pub imm_memtables: Vec<Arc<MemTable>>,
     /// L0 SSTs, from latest to earliest.
@@ -278,8 +279,26 @@ impl LsmStorageInner {
     }
 
     /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
-    pub fn get(&self, _key: &[u8]) -> Result<Option<Bytes>> {
-        unimplemented!()
+    pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
+        let snapshot = self.state.read();
+        if let Some(value) = snapshot.memtable.get(key) {
+            if value.is_empty() {
+                return Ok(None);
+            }
+            return Ok(Some(value));
+        }
+
+        for memtable in snapshot.imm_memtables.iter() {
+            if let Some(value) = memtable.get(key) {
+                if value.is_empty() {
+                    // found tomestone, return key not exists
+                    return Ok(None);
+                }
+                return Ok(Some(value));
+            }
+        }
+
+        Ok(None)
     }
 
     /// Write a batch of data into the storage. Implement in week 2 day 7.
@@ -288,13 +307,17 @@ impl LsmStorageInner {
     }
 
     /// Put a key-value pair into the storage by writing into the current memtable.
-    pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
-        unimplemented!()
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        self.state.read().memtable.put(key, value)?;
+
+        let memtable_size = self.state.read().memtable.approximate_size();
+        self.try_freeze(memtable_size)?;
+        Ok(())
     }
 
     /// Remove a key from the storage by writing an empty value.
-    pub fn delete(&self, _key: &[u8]) -> Result<()> {
-        unimplemented!()
+    pub fn delete(&self, key: &[u8]) -> Result<()> {
+        self.put(key, TOMESTONE)
     }
 
     pub(crate) fn path_of_sst_static(path: impl AsRef<Path>, id: usize) -> PathBuf {
@@ -317,9 +340,26 @@ impl LsmStorageInner {
         unimplemented!()
     }
 
+    pub(crate) fn try_freeze(&self, memtable_size: usize) -> Result<()> {
+        if memtable_size > self.options.target_sst_size {
+            let state_lock = self.state_lock.lock();
+            let dcl_memtable_size = self.state.read().memtable.approximate_size(); // lock free
+            if dcl_memtable_size > self.options.target_sst_size {
+                self.force_freeze_memtable(&state_lock)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Force freeze the current memtable to an immutable memtable
     pub fn force_freeze_memtable(&self, _state_lock_observer: &MutexGuard<'_, ()>) -> Result<()> {
-        unimplemented!()
+        let mut guard = self.state.write();
+        let mut snapshot = guard.as_ref().clone();
+        snapshot.imm_memtables.insert(0, snapshot.memtable.clone());
+        snapshot.memtable = Arc::new(MemTable::create(self.next_sst_id()));
+
+        *guard = Arc::new(snapshot);
+        Ok(())
     }
 
     /// Force flush the earliest-created immutable memtable to disk
