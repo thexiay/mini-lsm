@@ -2,9 +2,11 @@
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
 use std::cmp::{self};
+use std::collections::binary_heap::PeekMut;
 use std::collections::BinaryHeap;
 
 use anyhow::Result;
+use log::{debug, info};
 
 use crate::key::KeySlice;
 
@@ -47,7 +49,24 @@ pub struct MergeIterator<I: StorageIterator> {
 
 impl<I: StorageIterator> MergeIterator<I> {
     pub fn create(iters: Vec<Box<I>>) -> Self {
-        unimplemented!()
+        if iters.iter().all(|iter| !iter.is_valid()) {
+            let mut iters = iters;
+            let current = iters.pop().map(|iter| HeapWrapper(0, iter));
+            return MergeIterator {
+                iters: BinaryHeap::new(),
+                current,
+            };
+        }
+
+        let mut heap = BinaryHeap::new();
+        for (i, iter) in iters.into_iter().enumerate() {
+            if iter.is_valid() {
+                let wrapper = HeapWrapper(i, iter);
+                heap.push(wrapper);
+            }
+        }
+        let current = heap.pop();
+        MergeIterator { iters: heap, current }
     }
 }
 
@@ -57,18 +76,60 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     type KeyType<'a> = KeySlice<'a>;
 
     fn key(&self) -> KeySlice {
-        unimplemented!()
+        self.current.as_ref()
+            .map_or(KeySlice::default(), |current| current.1.key())
     }
 
     fn value(&self) -> &[u8] {
-        unimplemented!()
+        self.current.as_ref()
+            .map_or(&[], |current| current.1.value())
     }
 
     fn is_valid(&self) -> bool {
-        unimplemented!()
+        self.current.as_ref()
+            .map_or(false, |current| current.1.is_valid())
     }
 
     fn next(&mut self) -> Result<()> {
-        unimplemented!()
+        if self.current.is_none() {
+            return Ok(());
+        }
+    
+        // evict value which key eq to current key
+        let current = self.current.as_mut().unwrap();
+        while let Some(mut next_iter) = self.iters.peek_mut() {
+            if next_iter.1.key() == current.1.key() {
+                debug!("evict from iter {} key {:?}", next_iter.0, current.1.key());
+                if let e @ Err(_) = next_iter.1.next() {
+                    PeekMut::pop(next_iter);
+                    return e;
+                }
+
+                if !next_iter.1.is_valid() {
+                    debug!("evict iter {} ", next_iter.0);
+                    PeekMut::pop(next_iter);
+                }    
+            } else {
+                break
+            }
+        }
+        
+        current.1.next()?;
+
+        // election next in iters and current, set next element iter as current
+        if current.1.is_valid() {
+            // should evict useless iterator
+            if let Some(mut next_iter) = self.iters.peek_mut() {
+                if &*next_iter > current {
+                    debug!("swap iter {} key {:?} with iter {} key {:?}", next_iter.0, next_iter.1.key(), current.0, current.1.key());
+                    std::mem::swap(current, &mut (*next_iter));
+                }
+            }          
+        } else {
+            debug!("evict iter {} ", current.0);
+            self.current = self.iters.pop();
+        }
+        Ok(())
+        
     }
 }
