@@ -6,7 +6,7 @@ use std::collections::binary_heap::PeekMut;
 use std::collections::BinaryHeap;
 
 use anyhow::Result;
-use log::{debug, info};
+use log::debug;
 
 use crate::key::KeySlice;
 
