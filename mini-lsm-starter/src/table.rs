@@ -10,12 +10,13 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
+use anyhow::anyhow;
 pub use builder::SsTableBuilder;
 use bytes::{Buf, BufMut, Bytes};
 pub use iterator::SsTableIterator;
 
 use crate::block::Block;
-use crate::key::{Key, KeyBytes, KeySlice};
+use crate::key::{KeyBytes, KeySlice};
 use crate::lsm_storage::BlockCache;
 
 use self::bloom::Bloom;
@@ -182,7 +183,13 @@ impl SsTable {
 
     /// Read a block from the disk.
     pub fn read_block(&self, block_idx: usize) -> Result<Arc<Block>> {
-        unimplemented!()
+        let offset = self.block_meta.get(block_idx)
+            .ok_or_else(|| anyhow!("error idx read block"))?
+            .offset;
+        let next_offset = self.block_meta.get(block_idx + 1)
+            .map_or(self.block_meta_offset, |meta| meta.offset);
+        let block = FileObject::read(&self.file, offset as u64, (next_offset - offset) as u64)?;
+        Ok(Arc::new(Block::decode(&block)))
     }
 
     /// Read a block from disk, with block cache. (Day 4)
@@ -193,8 +200,23 @@ impl SsTable {
     /// Find the block that may contain `key`.
     /// Note: You may want to make use of the `first_key` stored in `BlockMeta`.
     /// You may also assume the key-value pairs stored in each consecutive block are sorted.
+    /// return range [0, block_meta.len()]
     pub fn find_block_idx(&self, key: KeySlice) -> usize {
-        unimplemented!()
+        // find the the first block whose first key that is greater than or equal to key
+        let over_block_idx = self.block_meta
+            .partition_point(| meta | meta.first_key.as_key_slice() < key);
+        // check previouse block range, maybe the key is in the previous block
+        // like [1, 3], [3, 7], key = 2, it should be in the 0 block but over block is 1
+        if over_block_idx > 0 {
+            let prev_block_meta = self.block_meta.get(over_block_idx - 1).unwrap();
+            if prev_block_meta.last_key.as_key_slice() >= key {
+                over_block_idx - 1
+            } else {
+                over_block_idx
+            }
+        } else {
+            over_block_idx
+        }
     }
 
     /// Get number of data blocks.

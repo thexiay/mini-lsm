@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
+use log::info;
 use tempfile::{tempdir, TempDir};
 
 use crate::iterators::StorageIterator;

@@ -34,10 +34,6 @@ impl BlockIterator {
         }
     }
 
-    fn decode_key_value(&self) {
-
-    }
-
     /// Creates a block iterator and seek to the first entry.
     pub fn create_and_seek_to_first(block: Arc<Block>) -> Self {
         let mut block_iter = BlockIterator::new(block);
@@ -84,7 +80,7 @@ impl BlockIterator {
     /// Returns true if the iterator is valid.
     /// Note: You may want to make use of `key`
     pub fn is_valid(&self) -> bool {
-        self.key.is_empty()
+        !self.key.is_empty()
     }
 
     /// Seeks to the first key in the block.
