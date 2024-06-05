@@ -2,7 +2,9 @@
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
 use anyhow::Result;
+use anyhow::anyhow;
 
+use crate::mem_table::TOMBSTONE;
 use crate::{
     iterators::{merge_iterator::MergeIterator, StorageIterator},
     mem_table::MemTableIterator,
@@ -17,10 +19,22 @@ pub struct LsmIterator {
 
 impl LsmIterator {
     pub(crate) fn new(iter: LsmIteratorInner) -> Result<Self> {
-        Ok(Self { inner: iter })
+        let mut lsm_iter = LsmIterator {
+            inner: iter,
+        };
+        lsm_iter.move_to_non_delete()?;
+        Ok(lsm_iter)
+    }
+
+    fn move_to_non_delete(&mut self) -> Result<()> {
+        while self.is_valid() && self.inner.value() == TOMBSTONE {
+            self.inner.next()?;
+        }
+        Ok(())
     }
 }
 
+/// lsm iterator iter all records(not include delete record) in memtable
 impl StorageIterator for LsmIterator {
     type KeyType<'a> = &'a [u8];
 
@@ -37,7 +51,8 @@ impl StorageIterator for LsmIterator {
     }
 
     fn next(&mut self) -> Result<()> {
-        self.inner.next()
+        self.inner.next()?;
+        self.move_to_non_delete()
     }
 }
 
@@ -77,8 +92,8 @@ impl<I: StorageIterator> StorageIterator for FusedIterator<I> {
     }
 
     fn next(&mut self) -> Result<()> {
-        if !self.is_valid() {
-            return Ok(());
+        if self.has_errored {
+            return Err(anyhow!("Iterator has errored"));
         }
         
         self.iter.next().map_err(|e| {

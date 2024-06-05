@@ -27,7 +27,7 @@ pub struct MemTable {
     approximate_size: Arc<AtomicUsize>,
 }
 
-pub const TOMESTONE: &[u8] = &[];
+pub const TOMBSTONE: &[u8] = &[];
 
 /// Create a bound of `Bytes` from a bound of `&[u8]`.
 pub(crate) fn map_bound(bound: Bound<&[u8]>) -> Bound<Bytes> {

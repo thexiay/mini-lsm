@@ -18,7 +18,7 @@ use crate::compact::{
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
-use crate::mem_table::{MemTable, TOMESTONE};
+use crate::mem_table::{MemTable, TOMBSTONE};
 use crate::mvcc::LsmMvccInner;
 use crate::table::SsTable;
 
@@ -318,7 +318,7 @@ impl LsmStorageInner {
 
     /// Remove a key from the storage by writing an empty value.
     pub fn delete(&self, key: &[u8]) -> Result<()> {
-        self.put(key, TOMESTONE)
+        self.put(key, TOMBSTONE)
     }
 
     pub(crate) fn path_of_sst_static(path: impl AsRef<Path>, id: usize) -> PathBuf {
