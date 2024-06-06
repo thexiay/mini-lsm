@@ -7,7 +7,6 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use super::{BlockMeta, FileObject, SsTable};
-use crate::key::KeyVec;
 use crate::{block::BlockBuilder, key::{Key, KeySlice}, lsm_storage::BlockCache};
 
 /// Builds an SSTable from key-value pairs.
