@@ -17,11 +17,13 @@ use crate::compact::{
 };
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
+use crate::iterators::StorageIterator;
+use crate::key::Key;
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
 use crate::mem_table::{MemTable, TOMBSTONE};
 use crate::mvcc::LsmMvccInner;
-use crate::table::{RangeSsTableIterator, SsTable};
+use crate::table::{RangeSsTableIterator, SsTable, SsTableIterator};
 
 pub type BlockCache = moka::sync::Cache<(usize, usize), Arc<Block>>;
 
@@ -282,24 +284,52 @@ impl LsmStorageInner {
 
     /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
     pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
-        let snapshot = self.state.read();
-        if let Some(value) = snapshot.memtable.get(key) {
-            if value.is_empty() {
-                return Ok(None);
+        let sst = {
+            let snapshot = self.state.read();
+            if let Some(value) = snapshot.memtable.get(key) {
+                return if value.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(value))
+                };
             }
-            return Ok(Some(value));
-        }
 
-        for memtable in snapshot.imm_memtables.iter() {
-            if let Some(value) = memtable.get(key) {
-                if value.is_empty() {
-                    // found tomestone, return key not exists
-                    return Ok(None);
+            for memtable in snapshot.imm_memtables.iter() {
+                if let Some(value) = memtable.get(key) {
+                    return if value.is_empty() {
+                        // found tomestone, return key not exists
+                        Ok(None)
+                    } else {
+                        Ok(Some(value))
+                    };
                 }
-                return Ok(Some(value));
             }
-        }
 
+            snapshot
+                .l0_sstables
+                .iter()
+                .filter_map(|sst_idx| snapshot.sstables.get(sst_idx).cloned())
+                .collect::<Vec<Arc<SsTable>>>()
+        };
+
+        let sst_iters = sst
+            .iter()
+            .map(|sst| {
+                Ok(Box::new(SsTableIterator::create_and_seek_to_key(
+                    sst.clone(),
+                    Key::from_slice(key),
+                )?))
+            })
+            .collect::<Result<Vec<Box<SsTableIterator>>>>()?;
+        let iter = MergeIterator::create(sst_iters);
+        if iter.is_valid() && iter.key() == Key::from_slice(key) {
+            let value = iter.value();
+            return if value.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(Bytes::copy_from_slice(value)))
+            };
+        }
         Ok(None)
     }
 
