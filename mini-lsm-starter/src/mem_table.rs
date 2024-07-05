@@ -109,10 +109,10 @@ impl MemTable {
                 map.range((map_bound(lower), map_bound(upper)))
             },
             item: (Bytes::new(), Bytes::new()),
-        }.build();
+        }
+        .build();
         iter.next().unwrap();
         iter
-
     }
 
     /// Flush the mem-table to SSTable. Implement in week 1 day 6.
@@ -175,7 +175,12 @@ impl StorageIterator for MemTableIterator {
             let next = this.iter.next();
             *this.item = next.map_or_else(
                 || (Bytes::new(), Bytes::new()),
-                |x| (Bytes::copy_from_slice(x.key()), Bytes::copy_from_slice(x.value())),
+                |x| {
+                    (
+                        Bytes::copy_from_slice(x.key()),
+                        Bytes::copy_from_slice(x.value()),
+                    )
+                },
             );
         });
         Ok(())

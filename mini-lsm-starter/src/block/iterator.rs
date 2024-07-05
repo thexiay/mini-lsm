@@ -48,7 +48,7 @@ impl BlockIterator {
         block_iter.seek_to_key(key);
         block_iter
     }
-    
+
     fn seek_to_idx(&mut self, idx: usize) {
         self.idx = idx;
         if idx >= self.block.offsets.len() {
@@ -60,7 +60,7 @@ impl BlockIterator {
         let key_offset = *self.block.offsets.get(idx).unwrap() as usize;
         let key_len = (&self.block.data[key_offset..key_offset + 2]).get_u16();
         self.key = KeyVec::from_vec(
-            self.block.data[key_offset + 2..key_offset + 2 + key_len as usize].to_vec()
+            self.block.data[key_offset + 2..key_offset + 2 + key_len as usize].to_vec(),
         );
         let value_offset = key_offset + 2 + key_len as usize;
         let value_len = (&self.block.data[value_offset..value_offset + 2]).get_u16();
@@ -102,16 +102,19 @@ impl BlockIterator {
         let mut r = self.block.offsets.len();
         while l < r {
             let mid = l + (r - l) / 2;
-            if mid >= self.block.offsets.len() {  // only happen when `l = r = block.offsets.len()`
+            if mid >= self.block.offsets.len() {
+                // only happen when `l = r = block.offsets.len()`
                 break;
             }
             // get mid key
             let key_offset = *self.block.offsets.get(mid).unwrap() as usize;
             let key_len = (&self.block.data[key_offset..key_offset + 2]).get_u16();
-            let mid_key = Key::from_slice(&self.block.data[key_offset + 2..key_offset + 2 + key_len as usize]);
+            let mid_key = Key::from_slice(
+                &self.block.data[key_offset + 2..key_offset + 2 + key_len as usize],
+            );
             if mid_key < key {
                 l = mid + 1;
-            } else if mid_key == key{
+            } else if mid_key == key {
                 r = mid;
             } else {
                 r = mid;

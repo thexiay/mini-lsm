@@ -68,7 +68,10 @@ impl<I: StorageIterator> MergeIterator<I> {
             }
         }
         let current = heap.pop();
-        MergeIterator { iters: heap, current }
+        MergeIterator {
+            iters: heap,
+            current,
+        }
     }
 }
 
@@ -78,17 +81,20 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     type KeyType<'a> = KeySlice<'a>;
 
     fn key(&self) -> KeySlice {
-        self.current.as_ref()
+        self.current
+            .as_ref()
             .map_or(KeySlice::default(), |current| current.1.key())
     }
 
     fn value(&self) -> &[u8] {
-        self.current.as_ref()
+        self.current
+            .as_ref()
             .map_or(&[], |current| current.1.value())
     }
 
     fn is_valid(&self) -> bool {
-        self.current.as_ref()
+        self.current
+            .as_ref()
             .map_or(false, |current| current.1.is_valid())
     }
 
@@ -96,7 +102,7 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
         if self.current.is_none() {
             return Ok(());
         }
-    
+
         // evict value which key eq to current key
         let current = self.current.as_mut().unwrap();
         while let Some(mut next_iter) = self.iters.peek_mut() {
@@ -110,12 +116,12 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
                 if !next_iter.1.is_valid() {
                     debug!("evict iter {} ", next_iter.0);
                     PeekMut::pop(next_iter);
-                }    
+                }
             } else {
-                break
+                break;
             }
         }
-        
+
         current.1.next()?;
 
         // election next in iters and current, set next element iter as current
@@ -123,15 +129,20 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
             // should evict useless iterator
             if let Some(mut next_iter) = self.iters.peek_mut() {
                 if &*next_iter > current {
-                    debug!("swap iter {} key {:?} with iter {} key {:?}", next_iter.0, next_iter.1.key(), current.0, current.1.key());
+                    debug!(
+                        "swap iter {} key {:?} with iter {} key {:?}",
+                        next_iter.0,
+                        next_iter.1.key(),
+                        current.0,
+                        current.1.key()
+                    );
                     std::mem::swap(current, &mut (*next_iter));
                 }
-            }          
+            }
         } else {
             debug!("evict iter {} ", current.0);
             self.current = self.iters.pop();
         }
         Ok(())
-        
     }
 }

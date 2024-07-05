@@ -9,8 +9,8 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::Result;
 use anyhow::anyhow;
+use anyhow::Result;
 pub use builder::SsTableBuilder;
 use bytes::{Buf, BufMut, Bytes};
 pub use iterator::SsTableIterator;
@@ -142,12 +142,18 @@ impl SsTable {
     /// Open SSTable from a file.
     pub fn open(id: usize, block_cache: Option<Arc<BlockCache>>, file: FileObject) -> Result<Self> {
         let data = file.read(0, file.1)?;
-        let block_meta_offset = (&data.as_slice()[data.len()-4..]).get_u32() as usize;
+        let block_meta_offset = (&data.as_slice()[data.len() - 4..]).get_u32() as usize;
         let block_meta = BlockMeta::decode_block_meta(&data[block_meta_offset..]);
-        let first_key = block_meta.get(0)
-            .map_or(KeyBytes::from_bytes(Bytes::new()), |meta| meta.first_key.clone());
-        let last_key = block_meta.get(block_meta.len() - 1)
-            .map_or(KeyBytes::from_bytes(Bytes::new()), |meta| meta.last_key.clone());
+        let first_key = block_meta
+            .get(0)
+            .map_or(KeyBytes::from_bytes(Bytes::new()), |meta| {
+                meta.first_key.clone()
+            });
+        let last_key = block_meta
+            .get(block_meta.len() - 1)
+            .map_or(KeyBytes::from_bytes(Bytes::new()), |meta| {
+                meta.last_key.clone()
+            });
         Ok(SsTable {
             file,
             block_meta,
@@ -157,7 +163,7 @@ impl SsTable {
             first_key,
             last_key,
             bloom: None,
-            max_ts: 0,  // todo
+            max_ts: 0, // todo
         })
     }
 
@@ -183,10 +189,14 @@ impl SsTable {
 
     /// Read a block from the disk.
     pub fn read_block(&self, block_idx: usize) -> Result<Arc<Block>> {
-        let offset = self.block_meta.get(block_idx)
+        let offset = self
+            .block_meta
+            .get(block_idx)
             .ok_or_else(|| anyhow!("error idx read block"))?
             .offset;
-        let next_offset = self.block_meta.get(block_idx + 1)
+        let next_offset = self
+            .block_meta
+            .get(block_idx + 1)
             .map_or(self.block_meta_offset, |meta| meta.offset);
         let block = FileObject::read(&self.file, offset as u64, (next_offset - offset) as u64)?;
         Ok(Arc::new(Block::decode(&block)))
@@ -203,8 +213,9 @@ impl SsTable {
     /// return range [0, block_meta.len()]
     pub fn find_block_idx(&self, key: KeySlice) -> usize {
         // find the the first block whose first key that is greater than or equal to key
-        let over_block_idx = self.block_meta
-            .partition_point(| meta | meta.first_key.as_key_slice() < key);
+        let over_block_idx = self
+            .block_meta
+            .partition_point(|meta| meta.first_key.as_key_slice() < key);
         // check previouse block range, maybe the key is in the previous block
         // like [1, 3], [3, 7], key = 2, it should be in the 0 block but over block is 1
         if over_block_idx > 0 {

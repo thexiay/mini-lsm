@@ -1,8 +1,8 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
-use anyhow::Result;
 use anyhow::anyhow;
+use anyhow::Result;
 
 use crate::mem_table::TOMBSTONE;
 use crate::{
@@ -19,9 +19,7 @@ pub struct LsmIterator {
 
 impl LsmIterator {
     pub(crate) fn new(iter: LsmIteratorInner) -> Result<Self> {
-        let mut lsm_iter = LsmIterator {
-            inner: iter,
-        };
+        let mut lsm_iter = LsmIterator { inner: iter };
         lsm_iter.move_to_non_delete()?;
         Ok(lsm_iter)
     }
@@ -95,7 +93,7 @@ impl<I: StorageIterator> StorageIterator for FusedIterator<I> {
         if self.has_errored {
             return Err(anyhow!("Iterator has errored"));
         }
-        
+
         self.iter.next().map_err(|e| {
             self.has_errored = true;
             e

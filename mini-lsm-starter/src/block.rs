@@ -31,7 +31,9 @@ impl Block {
         let len = self.data.len() + self.offsets.len() * 2 + 2;
         let mut block = BytesMut::with_capacity(len);
         block.put(self.data.as_slice());
-        self.offsets.iter().for_each(|offset| block.put_u16(*offset));
+        self.offsets
+            .iter()
+            .for_each(|offset| block.put_u16(*offset));
         block.put_u16(self.offsets.len() as u16);
         block.freeze()
     }
@@ -39,23 +41,21 @@ impl Block {
     /// Decode from the data layout, transform the input `data` to a single `Block`
     pub fn decode(data: &[u8]) -> Self {
         let data_len = data.len();
-        let num_of_elements = u16::from_be_bytes([data[data_len-2], data[data_len-1]]);
+        let num_of_elements = u16::from_be_bytes([data[data_len - 2], data[data_len - 1]]);
 
         let mut offsets = vec![];
         for i in 0..num_of_elements {
-            offsets.push(
-                u16::from_be_bytes([
-                    data[data_len - 2 * ((num_of_elements - i + 1) as usize)],
-                    data[data_len - 2 * ((num_of_elements - i + 1) as usize) + 1]
-                ])
-            );
+            offsets.push(u16::from_be_bytes([
+                data[data_len - 2 * ((num_of_elements - i + 1) as usize)],
+                data[data_len - 2 * ((num_of_elements - i + 1) as usize) + 1],
+            ]));
         }
 
         let mut datas = vec![];
         datas.extend_from_slice(&data[0..data_len - 2 - 2 * num_of_elements as usize]);
-        Block { 
-            data: datas, 
-            offsets 
+        Block {
+            data: datas,
+            offsets,
         }
     }
 }

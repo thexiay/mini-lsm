@@ -7,7 +7,11 @@ use anyhow::Result;
 use log::info;
 
 use super::SsTable;
-use crate::{block::BlockIterator, iterators::StorageIterator, key::{Key, KeySlice}};
+use crate::{
+    block::BlockIterator,
+    iterators::StorageIterator,
+    key::{Key, KeySlice},
+};
 
 /// An iterator over the contents of an SSTable.
 pub struct SsTableIterator {
@@ -57,7 +61,10 @@ impl SsTableIterator {
         Ok(())
     }
 
-    fn seek_to_key_inner(table: &Arc<SsTable>, key: KeySlice) -> Result<(usize, Option<BlockIterator>)> {
+    fn seek_to_key_inner(
+        table: &Arc<SsTable>,
+        key: KeySlice,
+    ) -> Result<(usize, Option<BlockIterator>)> {
         let block_idx = table.find_block_idx(key);
         if block_idx >= table.num_of_blocks() {
             Ok((block_idx, None))
@@ -67,7 +74,6 @@ impl SsTableIterator {
             let blk_iter = BlockIterator::create_and_seek_to_key(block, key);
             Ok((block_idx, Some(blk_iter)))
         }
-        
     }
 }
 
@@ -83,9 +89,7 @@ impl StorageIterator for SsTableIterator {
 
     /// Return the `value` that's held by the underlying block iterator.
     fn value(&self) -> &[u8] {
-        self.blk_iter
-            .as_ref()
-            .map_or(&[], |iter| iter.value())
+        self.blk_iter.as_ref().map_or(&[], |iter| iter.value())
     }
 
     /// Return whether the current block iterator is valid or not.

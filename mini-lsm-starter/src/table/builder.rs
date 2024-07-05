@@ -1,13 +1,17 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
-use std::{mem, path::Path};
 use std::sync::Arc;
+use std::{mem, path::Path};
 
 use anyhow::Result;
 
 use super::{BlockMeta, FileObject, SsTable};
-use crate::{block::BlockBuilder, key::{Key, KeySlice}, lsm_storage::BlockCache};
+use crate::{
+    block::BlockBuilder,
+    key::{Key, KeySlice},
+    lsm_storage::BlockCache,
+};
 
 /// Builds an SSTable from key-value pairs.
 pub struct SsTableBuilder {
@@ -89,7 +93,6 @@ impl SsTableBuilder {
 
         self.data.extend_from_slice(&block.encode());
     }
-
 
     #[cfg(test)]
     pub(crate) fn build_for_test(self, path: impl AsRef<Path>) -> Result<SsTable> {
