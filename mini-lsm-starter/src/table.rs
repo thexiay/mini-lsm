@@ -13,6 +13,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 pub use builder::SsTableBuilder;
 use bytes::{Buf, BufMut, Bytes};
+pub use iterator::RangeSsTableIterator;
 pub use iterator::SsTableIterator;
 
 use crate::block::Block;

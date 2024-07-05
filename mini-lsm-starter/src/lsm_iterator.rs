@@ -4,14 +4,17 @@
 use anyhow::anyhow;
 use anyhow::Result;
 
+use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::mem_table::TOMBSTONE;
+use crate::table::RangeSsTableIterator;
 use crate::{
     iterators::{merge_iterator::MergeIterator, StorageIterator},
     mem_table::MemTableIterator,
 };
 
 /// Represents the internal type for an LSM iterator. This type will be changed across the tutorial for multiple times.
-type LsmIteratorInner = MergeIterator<MemTableIterator>;
+type LsmIteratorInner =
+    TwoMergeIterator<MergeIterator<MemTableIterator>, MergeIterator<RangeSsTableIterator>>;
 
 /// note: it only output non-delete records
 /// but inner iter, include imm, sst, mm table iter will include delete records

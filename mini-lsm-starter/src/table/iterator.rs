@@ -1,7 +1,7 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 
 use anyhow::Result;
 use log::info;
@@ -10,7 +10,7 @@ use super::SsTable;
 use crate::{
     block::BlockIterator,
     iterators::StorageIterator,
-    key::{Key, KeySlice},
+    key::{Key, KeySlice, KeyVec},
 };
 
 /// An iterator over the contents of an SSTable.
@@ -118,5 +118,94 @@ impl StorageIterator for SsTableIterator {
             }
         }
         Ok(())
+    }
+}
+
+/// An iterator scan the range key of an SSTable.
+pub struct RangeSsTableIterator {
+    iter: SsTableIterator,
+    end_key: Bound<KeyVec>,
+    is_ended: bool,
+}
+
+impl RangeSsTableIterator {
+    pub fn create(
+        table: Arc<SsTable>,
+        start_key: Bound<&[u8]>,
+        end_key: Bound<&[u8]>,
+    ) -> Result<Self> {
+        let iter = match start_key {
+            Bound::Included(key) => {
+                SsTableIterator::create_and_seek_to_key(table, Key::from_slice(key))?
+            }
+            Bound::Excluded(key) => {
+                // exclude, find first key > `key`
+                let mut sst_iter =
+                    SsTableIterator::create_and_seek_to_key(table, Key::from_slice(key))?;
+                while sst_iter.is_valid() && sst_iter.key() == Key::from_slice(key) {
+                    sst_iter.next()?;
+                }
+                sst_iter
+            }
+            Bound::Unbounded => SsTableIterator::create_and_seek_to_first(table)?,
+        };
+        let end_key = match end_key {
+            Bound::Included(key) => Bound::Included(Key::from_slice(key).to_key_vec()),
+            Bound::Excluded(key) => Bound::Excluded(Key::from_slice(key).to_key_vec()),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        Ok(RangeSsTableIterator {
+            iter,
+            end_key,
+            is_ended: false,
+        })
+    }
+}
+
+impl StorageIterator for RangeSsTableIterator {
+    type KeyType<'a> = KeySlice<'a>;
+
+    fn value(&self) -> &[u8] {
+        match self.is_ended {
+            true => &[],
+            false => self.iter.value(),
+        }
+    }
+
+    fn key(&self) -> Self::KeyType<'_> {
+        match self.is_ended {
+            true => Key::default(),
+            false => self.iter.key(),
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        match self.is_ended {
+            true => false,
+            false => self.iter.is_valid(),
+        }
+    }
+
+    fn next(&mut self) -> anyhow::Result<()> {
+        match self.is_ended {
+            true => Ok(()),
+            false => {
+                self.iter.next()?;
+                match self.end_key {
+                    Bound::Included(ref key) => {
+                        if self.iter.is_valid() && self.iter.key() > key.as_key_slice() {
+                            self.is_ended = true;
+                        }
+                    }
+                    Bound::Excluded(ref key) => {
+                        if self.iter.is_valid() && self.iter.key() >= key.as_key_slice() {
+                            self.is_ended = true;
+                        }
+                    }
+                    Bound::Unbounded => {}
+                }
+                Ok(())
+            }
+        }
     }
 }

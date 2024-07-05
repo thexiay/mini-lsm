@@ -16,11 +16,12 @@ use crate::compact::{
     SimpleLeveledCompactionController, SimpleLeveledCompactionOptions, TieredCompactionController,
 };
 use crate::iterators::merge_iterator::MergeIterator;
+use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
 use crate::mem_table::{MemTable, TOMBSTONE};
 use crate::mvcc::LsmMvccInner;
-use crate::table::SsTable;
+use crate::table::{RangeSsTableIterator, SsTable};
 
 pub type BlockCache = moka::sync::Cache<(usize, usize), Arc<Block>>;
 
@@ -380,15 +381,37 @@ impl LsmStorageInner {
         upper: Bound<&[u8]>,
     ) -> Result<FusedIterator<LsmIterator>> {
         // todo: now only read memtable and imm memtable, next to read sstables
-        let storage_state = self.state.read();
-        let mut memtable_iters = vec![];
-        memtable_iters.push(Box::new(storage_state.memtable.scan(lower, upper)));
-        storage_state
-            .imm_memtables
-            .iter()
-            .for_each(|memtable| memtable_iters.push(Box::new(memtable.scan(lower, upper))));
+        let (memtable_merge_iter, ssts) = {
+            let storage_state = self.state.read();
+            let mut memtable_iters = vec![];
+            memtable_iters.push(Box::new(storage_state.memtable.scan(lower, upper)));
+            storage_state
+                .imm_memtables
+                .iter()
+                .for_each(|memtable| memtable_iters.push(Box::new(memtable.scan(lower, upper))));
+            let memtable_merge_iter = MergeIterator::create(memtable_iters);
 
-        let merge_iter = MergeIterator::create(memtable_iters);
-        Ok(FusedIterator::new(LsmIterator::new(merge_iter)?))
+            let idx = &storage_state.l0_sstables;
+            let ssts = idx
+                .iter()
+                .filter_map(|sst_idx| storage_state.sstables.get(sst_idx).cloned())
+                .collect::<Vec<Arc<SsTable>>>();
+            (memtable_merge_iter, ssts)
+        };
+
+        let sst_iters = ssts
+            .iter()
+            .map(|sst| {
+                Ok(Box::new(RangeSsTableIterator::create(
+                    sst.clone(),
+                    lower,
+                    upper,
+                )?))
+            })
+            .collect::<Result<Vec<Box<RangeSsTableIterator>>>>()?;
+        let sst_merge_iter = MergeIterator::create(sst_iters);
+
+        let iter = TwoMergeIterator::create(memtable_merge_iter, sst_merge_iter)?;
+        Ok(FusedIterator::new(LsmIterator::new(iter)?))
     }
 }
