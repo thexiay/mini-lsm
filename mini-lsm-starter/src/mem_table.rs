@@ -43,7 +43,7 @@ impl MemTable {
         MemTable {
             map: Arc::new(SkipMap::new()),
             wal: None,
-            id: id,
+            id,
             approximate_size: Arc::new(AtomicUsize::new(0)),
         }
     }

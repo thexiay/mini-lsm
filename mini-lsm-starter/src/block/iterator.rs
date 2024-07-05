@@ -1,7 +1,7 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
-use std::sync::Arc;
+use std::{cmp::Ordering, sync::Arc};
 
 use bytes::Buf;
 
@@ -112,12 +112,11 @@ impl BlockIterator {
             let mid_key = Key::from_slice(
                 &self.block.data[key_offset + 2..key_offset + 2 + key_len as usize],
             );
-            if mid_key < key {
-                l = mid + 1;
-            } else if mid_key == key {
-                r = mid;
-            } else {
-                r = mid;
+            match mid_key.partial_cmp(&key) {
+                Some(Ordering::Less) => l = mid + 1,
+                Some(Ordering::Greater) => r = mid,
+                Some(Ordering::Equal) => r = mid,
+                None => panic!("{:?} and {:?} cannot be compared", mid_key, key),
             }
         }
         self.seek_to_idx(l);

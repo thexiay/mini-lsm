@@ -145,12 +145,12 @@ impl SsTable {
         let block_meta_offset = (&data.as_slice()[data.len() - 4..]).get_u32() as usize;
         let block_meta = BlockMeta::decode_block_meta(&data[block_meta_offset..]);
         let first_key = block_meta
-            .get(0)
+            .first()
             .map_or(KeyBytes::from_bytes(Bytes::new()), |meta| {
                 meta.first_key.clone()
             });
         let last_key = block_meta
-            .get(block_meta.len() - 1)
+            .last()
             .map_or(KeyBytes::from_bytes(Bytes::new()), |meta| {
                 meta.last_key.clone()
             });
