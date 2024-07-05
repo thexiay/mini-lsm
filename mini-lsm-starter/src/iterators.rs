@@ -16,7 +16,7 @@ pub trait StorageIterator {
     /// Check if the current iterator is valid.
     fn is_valid(&self) -> bool;
 
-    /// Move to the next position.
+    /// Move to the next position.It will not be repeated
     fn next(&mut self) -> anyhow::Result<()>;
 
     /// Number of underlying active iterators for this iterator.

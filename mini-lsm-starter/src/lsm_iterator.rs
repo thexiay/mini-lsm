@@ -13,6 +13,8 @@ use crate::{
 /// Represents the internal type for an LSM iterator. This type will be changed across the tutorial for multiple times.
 type LsmIteratorInner = MergeIterator<MemTableIterator>;
 
+/// note: it only output non-delete records
+/// but inner iter, include imm, sst, mm table iter will include delete records
 pub struct LsmIterator {
     inner: LsmIteratorInner,
 }
