@@ -10,7 +10,7 @@ use super::SsTable;
 use crate::{
     block::BlockIterator,
     iterators::StorageIterator,
-    key::{Key, KeySlice, KeyVec},
+    key::{Key, KeyBytes, KeySlice, KeyVec},
 };
 
 /// An iterator over the contents of an SSTable.
@@ -129,36 +129,51 @@ pub struct RangeSsTableIterator {
 }
 
 impl RangeSsTableIterator {
-    pub fn create(
+    pub fn scan(
         table: Arc<SsTable>,
         start_key: Bound<&[u8]>,
         end_key: Bound<&[u8]>,
-    ) -> Result<Self> {
+    ) -> Result<Option<Self>> {
         let iter = match start_key {
             Bound::Included(key) => {
-                SsTableIterator::create_and_seek_to_key(table, Key::from_slice(key))?
+                if key > table.last_key().raw_ref() {
+                    return Ok(None);
+                }
+                SsTableIterator::create_and_seek_to_key(table.clone(), Key::from_slice(key))?
             }
             Bound::Excluded(key) => {
-                // exclude, find first key > `key`
+                if key >= table.last_key().raw_ref() {
+                    return Ok(None);
+                }
                 let mut sst_iter =
-                    SsTableIterator::create_and_seek_to_key(table, Key::from_slice(key))?;
+                    SsTableIterator::create_and_seek_to_key(table.clone(), Key::from_slice(key))?;
                 while sst_iter.is_valid() && sst_iter.key() == Key::from_slice(key) {
                     sst_iter.next()?;
                 }
                 sst_iter
             }
-            Bound::Unbounded => SsTableIterator::create_and_seek_to_first(table)?,
+            Bound::Unbounded => SsTableIterator::create_and_seek_to_first(table.clone())?,
         };
         let end_key = match end_key {
-            Bound::Included(key) => Bound::Included(Key::from_slice(key).to_key_vec()),
-            Bound::Excluded(key) => Bound::Excluded(Key::from_slice(key).to_key_vec()),
+            Bound::Included(key) => {
+                if key < table.first_key().raw_ref() {
+                    return Ok(None);
+                }
+                Bound::Included(Key::from_slice(key).to_key_vec())
+            }
+            Bound::Excluded(key) => {
+                if key <= table.first_key().raw_ref() {
+                    return Ok(None);
+                }
+                Bound::Excluded(Key::from_slice(key).to_key_vec())
+            }
             Bound::Unbounded => Bound::Unbounded,
         };
-        Ok(RangeSsTableIterator {
+        Ok(Some(RangeSsTableIterator {
             iter,
             end_key,
             is_ended: false,
-        })
+        }))
     }
 }
 

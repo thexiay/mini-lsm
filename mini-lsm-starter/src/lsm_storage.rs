@@ -422,19 +422,22 @@ impl LsmStorageInner {
                 None => return Ok(()),
             }
         };
-        
+
         let sst_builder = SsTableBuilder::default();
         let sst = flush_imm_memtable.flush(
-            sst_builder, 
-            self.path.join(format!("{:10}.sst", flush_imm_memtable.id()
-        )))?;
-        
+            sst_builder,
+            self.path
+                .join(format!("{:10}.sst", flush_imm_memtable.id())),
+        )?;
+
         {
             let _guard = self.state_lock.lock();
             let table_id = flush_imm_memtable.id();
             let mut state = self.state.write();
             let mut snapshot = state.as_ref().clone();
-            snapshot.imm_memtables.retain(|table| table.id() != table_id);
+            snapshot
+                .imm_memtables
+                .retain(|table| table.id() != table_id);
             snapshot.l0_sstables.insert(0, table_id);
             snapshot.sstables.insert(table_id, sst.clone());
             // todo: levels add
@@ -476,12 +479,10 @@ impl LsmStorageInner {
 
         let sst_iters = ssts
             .iter()
-            .map(|sst| {
-                Ok(Box::new(RangeSsTableIterator::create(
-                    sst.clone(),
-                    lower,
-                    upper,
-                )?))
+            .filter_map(|sst| {
+                RangeSsTableIterator::scan(sst.clone(), lower, upper)
+                    .transpose()
+                    .map(|opt_iter| opt_iter.map(|iter| Box::new(iter)))
             })
             .collect::<Result<Vec<Box<RangeSsTableIterator>>>>()?;
         let sst_merge_iter = MergeIterator::create(sst_iters);

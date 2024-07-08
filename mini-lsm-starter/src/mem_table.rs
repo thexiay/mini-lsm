@@ -116,7 +116,11 @@ impl MemTable {
     }
 
     /// Flush the mem-table to SSTable. Implement in week 1 day 6.
-    pub fn flush(&self, mut builder: SsTableBuilder, path: impl AsRef<Path>) -> Result<Arc<SsTable>> {
+    pub fn flush(
+        &self,
+        mut builder: SsTableBuilder,
+        path: impl AsRef<Path>,
+    ) -> Result<Arc<SsTable>> {
         let mut iter = self.scan(Bound::Unbounded, Bound::Unbounded);
         // todo: put it in batch
         while iter.is_valid() {
