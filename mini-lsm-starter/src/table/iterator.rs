@@ -154,25 +154,31 @@ impl RangeSsTableIterator {
             }
             Bound::Unbounded => SsTableIterator::create_and_seek_to_first(table.clone())?,
         };
-        let end_key = match end_key {
+        let (end_key, is_ended) = match end_key {
             Bound::Included(key) => {
                 if key < table.first_key().raw_ref() {
                     return Ok(None);
                 }
-                Bound::Included(Key::from_slice(key).to_key_vec())
+                (
+                    Bound::Included(Key::from_slice(key).to_key_vec()),
+                    iter.key() > KeySlice::from_slice(key),
+                )
             }
             Bound::Excluded(key) => {
                 if key <= table.first_key().raw_ref() {
                     return Ok(None);
                 }
-                Bound::Excluded(Key::from_slice(key).to_key_vec())
+                (
+                    Bound::Excluded(Key::from_slice(key).to_key_vec()),
+                    iter.key() >= KeySlice::from_slice(key),
+                )
             }
-            Bound::Unbounded => Bound::Unbounded,
+            Bound::Unbounded => (Bound::Unbounded, false),
         };
         Ok(Some(RangeSsTableIterator {
             iter,
             end_key,
-            is_ended: false,
+            is_ended,
         }))
     }
 }
