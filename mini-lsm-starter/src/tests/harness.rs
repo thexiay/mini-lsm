@@ -149,6 +149,12 @@ pub fn check_lsm_iter_result_by_key<I>(iter: &mut I, expected: Vec<(Bytes, Bytes
 where
     I: for<'a> StorageIterator<KeyType<'a> = &'a [u8]>,
 {
+    /*
+    while iter.is_valid() {
+        println!("key: {:?}, value: {:?}", as_bytes(iter.key()), as_bytes(iter.value()));
+        iter.next().unwrap();
+    } */
+
     for (k, v) in expected {
         assert!(iter.is_valid());
         assert_eq!(

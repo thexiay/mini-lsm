@@ -1,6 +1,7 @@
 #![allow(dead_code)] // REMOVE THIS LINE after fully implementing this functionality
 
 use std::collections::HashMap;
+use std::fs;
 use std::ops::Bound;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicUsize;
@@ -23,7 +24,7 @@ use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
 use crate::mem_table::{MemTable, TOMBSTONE};
 use crate::mvcc::LsmMvccInner;
-use crate::table::{RangeSsTableIterator, SsTable, SsTableIterator};
+use crate::table::{RangeSsTableIterator, SsTable, SsTableBuilder, SsTableIterator};
 
 pub type BlockCache = moka::sync::Cache<(usize, usize), Arc<Block>>;
 
@@ -396,7 +397,43 @@ impl LsmStorageInner {
 
     /// Force flush the earliest-created immutable memtable to disk
     pub fn force_flush_next_imm_memtable(&self) -> Result<()> {
-        unimplemented!()
+        // may one or more immutable memtable into one sstable
+        // lock only do imm memtable reference clone, do flush in another scope
+        // 1. select eariliest imm memtable
+        // 2. flush it into sstable
+        // 3. remove memtable and and it into l0 sstable
+        // todo: pre create dir in constructor
+        if !self.path.exists() {
+            fs::create_dir_all(&self.path)?;
+        };
+
+        let flush_imm_memtable = {
+            let guard = self.state.read();
+            match guard.imm_memtables.last() {
+                Some(imm_memtable) => imm_memtable.clone(),
+                None => return Ok(()),
+            }
+        };
+        
+        let sst_builder = SsTableBuilder::default();
+        let sst = flush_imm_memtable.flush(
+            sst_builder, 
+            self.path.join(format!("{:10}.sst", flush_imm_memtable.id()
+        )))?;
+        
+        {
+            let _guard = self.state_lock.lock();
+            let table_id = flush_imm_memtable.id();
+            let mut state = self.state.write();
+            let mut snapshot = state.as_ref().clone();
+            snapshot.imm_memtables.retain(|table| table.id() != table_id);
+            snapshot.l0_sstables.insert(0, table_id);
+            snapshot.sstables.insert(table_id, sst.clone());
+            // todo: levels add
+            *state = Arc::new(snapshot);
+        }
+
+        Ok(())
     }
 
     pub fn new_txn(&self) -> Result<()> {

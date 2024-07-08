@@ -13,6 +13,8 @@ use crate::{
     lsm_storage::BlockCache,
 };
 
+const DEFAULT_BLOCK_SIZE: usize = 128;
+
 /// Builds an SSTable from key-value pairs.
 pub struct SsTableBuilder {
     builder: BlockBuilder,
@@ -21,6 +23,12 @@ pub struct SsTableBuilder {
     data: Vec<u8>,
     pub(crate) meta: Vec<BlockMeta>,
     block_size: usize,
+}
+
+impl Default for SsTableBuilder {
+    fn default() -> Self {
+        SsTableBuilder::new(DEFAULT_BLOCK_SIZE)
+    }
 }
 
 impl SsTableBuilder {
