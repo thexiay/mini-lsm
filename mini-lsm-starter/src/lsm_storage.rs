@@ -482,7 +482,7 @@ impl LsmStorageInner {
             .filter_map(|sst| {
                 RangeSsTableIterator::scan(sst.clone(), lower, upper)
                     .transpose()
-                    .map(|opt_iter| opt_iter.map(|iter| Box::new(iter)))
+                    .map(|opt_iter| opt_iter.map(Box::new))
             })
             .collect::<Result<Vec<Box<RangeSsTableIterator>>>>()?;
         let sst_merge_iter = MergeIterator::create(sst_iters);

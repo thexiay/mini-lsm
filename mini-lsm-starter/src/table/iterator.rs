@@ -10,7 +10,7 @@ use super::SsTable;
 use crate::{
     block::BlockIterator,
     iterators::StorageIterator,
-    key::{Key, KeyBytes, KeySlice, KeyVec},
+    key::{Key, KeySlice, KeyVec},
 };
 
 /// An iterator over the contents of an SSTable.
