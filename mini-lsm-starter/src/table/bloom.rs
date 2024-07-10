@@ -1,7 +1,7 @@
 // Copyright 2021 TiKV Project Authors. Licensed under Apache-2.0.
 
 use anyhow::Result;
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 /// Implements a bloom filter
 pub struct Bloom {
@@ -45,6 +45,20 @@ impl<T: AsMut<[u8]>> BitSliceMut for T {
 }
 
 impl Bloom {
+    pub fn decode_bloom_meta(buf: impl Buf) -> Self {
+        Self::decode(buf.chunk()).unwrap()
+    }
+
+    pub fn encode_bloom_meta(keys: &[u32], false_positive_rate: f64, buf: &mut Vec<u8>) {
+        let bits_per_key = Self::bloom_bits_per_key(keys.len(), false_positive_rate);
+        let bloom = Self::build_from_key_hashes(keys, bits_per_key);
+
+        assert!(buf.len() <= u32::MAX as usize);
+        let bloom_offset = buf.len() as u32;
+        bloom.encode(buf);
+        buf.put_u32(bloom_offset);
+    }
+
     /// Decode a bloom filter
     pub fn decode(buf: &[u8]) -> Result<Self> {
         let filter = &buf[..buf.len() - 1];
@@ -70,16 +84,16 @@ impl Bloom {
     }
 
     /// Build bloom filter from key hashes
-    pub fn build_from_key_hashes(keys: &[u32], bits_per_key: usize) -> Self {
+    pub fn build_from_key_hashes(key_hashes: &[u32], bits_per_key: usize) -> Self {
         let k = (bits_per_key as f64 * 0.69) as u32;
         let k = k.min(30).max(1);
-        let nbits = (keys.len() * bits_per_key).max(64);
+        let nbits = (key_hashes.len() * bits_per_key).max(64);
         let nbytes = (nbits + 7) / 8;
         let nbits = nbytes * 8;
         let mut filter = BytesMut::with_capacity(nbytes);
         filter.resize(nbytes, 0);
 
-        for h in keys {
+        for h in key_hashes {
             let mut h = *h;
             let delta = (h >> 17) | (h << 15);
             for _ in 0..k {

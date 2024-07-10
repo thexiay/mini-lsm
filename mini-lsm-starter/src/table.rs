@@ -113,11 +113,13 @@ impl FileObject {
 }
 
 /// An SSTable.
-/// ---------------------------------------------------------------------------------------------
-/// |         Block Section         |          Meta Section         |         Extra             |
-/// ---------------------------------------------------------------------------------------------
-/// | data block | ... | data block |            metadata           | meta block offsets(u32)   |
-/// ---------------------------------------------------------------------------------------------
+/// SSTable file:
+/// -----------------------------------------------------------------------------------------------------
+/// |         Block Section         |          Metadata Section                                         |
+/// -----------------------------------------------------------------------------------------------------
+/// | data block | ... | data block | metadata | meta block offset | bloom filter | bloom filter offset |
+/// |                               | varlen   |        u32        |    varlen    |      u32            |
+/// -----------------------------------------------------------------------------------------------------
 pub struct SsTable {
     /// The actual storage unit of SsTable, the format is as above.
     pub(crate) file: FileObject,
@@ -143,8 +145,13 @@ impl SsTable {
     /// Open SSTable from a file.
     pub fn open(id: usize, block_cache: Option<Arc<BlockCache>>, file: FileObject) -> Result<Self> {
         let data = file.read(0, file.1)?;
-        let block_meta_offset = (&data.as_slice()[data.len() - 4..]).get_u32() as usize;
+
+        let bloom_offset = (&data.as_slice()[data.len() - 4..]).get_u32() as usize;
+        let bloom = Bloom::decode_bloom_meta(&data[bloom_offset..data.len() - 4]);
+
+        let block_meta_offset = (&data.as_slice()[bloom_offset - 4..]).get_u32() as usize;
         let block_meta = BlockMeta::decode_block_meta(&data[block_meta_offset..]);
+
         let first_key = block_meta
             .first()
             .map_or(KeyBytes::from_bytes(Bytes::new()), |meta| {
@@ -163,7 +170,7 @@ impl SsTable {
             block_cache,
             first_key,
             last_key,
-            bloom: None,
+            bloom: Some(bloom),
             max_ts: 0, // todo
         })
     }

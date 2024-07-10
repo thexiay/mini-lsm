@@ -6,6 +6,7 @@ use std::{mem, path::Path};
 
 use anyhow::Result;
 
+use super::bloom::Bloom;
 use super::{BlockMeta, FileObject, SsTable};
 use crate::{
     block::BlockBuilder,
@@ -13,6 +14,7 @@ use crate::{
     lsm_storage::BlockCache,
 };
 
+const DEFAULT_FALSE_POSITIVE_RATE: f64 = 0.01;
 const DEFAULT_BLOCK_SIZE: usize = 128;
 
 /// Builds an SSTable from key-value pairs.
@@ -23,6 +25,7 @@ pub struct SsTableBuilder {
     data: Vec<u8>,
     pub(crate) meta: Vec<BlockMeta>,
     block_size: usize,
+    key_hashes: Vec<u32>,
 }
 
 impl Default for SsTableBuilder {
@@ -41,6 +44,7 @@ impl SsTableBuilder {
             data: Vec::new(),
             meta: Vec::new(),
             block_size,
+            key_hashes: Vec::new(),
         }
     }
 
@@ -52,6 +56,8 @@ impl SsTableBuilder {
         if self.first_key.is_empty() {
             self.first_key.set_from_slice(key);
         }
+
+        self.key_hashes.push(farmhash::fingerprint32(key.raw_ref()));
 
         if self.builder.add(key, value) {
             self.last_key.set_from_slice(key);
@@ -86,6 +92,7 @@ impl SsTableBuilder {
         self.finish_block();
 
         BlockMeta::encode_block_meta(&self.meta, &mut self.data);
+        Bloom::encode_bloom_meta(&self.key_hashes, 0.01, &mut self.data);
         let file = FileObject::create(path.as_ref(), self.data)?;
         SsTable::open(id, block_cache, file)
     }
