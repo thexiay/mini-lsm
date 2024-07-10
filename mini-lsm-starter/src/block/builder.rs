@@ -42,15 +42,29 @@ impl BlockBuilder {
         assert!(key.len() <= u16::MAX as usize);
         assert!(value.len() <= u16::MAX as usize);
         assert!(self.data.len() <= u16::MAX as usize);
-        self.offsets.push(self.data.len() as u16);
-        self.data
-            .extend_from_slice(&(key.len() as u16).to_be_bytes());
-        self.data.extend_from_slice(key.raw_ref());
-        self.data
-            .extend_from_slice(&(value.len() as u16).to_be_bytes());
-        self.data.extend_from_slice(value);
         if self.is_empty() {
             self.first_key = key.to_key_vec();
+            self.offsets.push(self.data.len() as u16);
+            self.data.extend_from_slice(&(0_u16).to_be_bytes());
+            self.data
+                .extend_from_slice(&(key.len() as u16).to_be_bytes());
+            self.data.extend_from_slice(key.raw_ref());
+
+            self.data
+                .extend_from_slice(&(value.len() as u16).to_be_bytes());
+            self.data.extend_from_slice(value);
+        } else {
+            self.offsets.push(self.data.len() as u16);
+            let overlap_len = self.first_key.prefix_length(key.raw_ref()) as u16;
+            let rest_len = key.len() as u16 - overlap_len;
+            self.data.extend_from_slice(&overlap_len.to_be_bytes());
+            self.data.extend_from_slice(&rest_len.to_be_bytes());
+            self.data
+                .extend_from_slice(&key.raw_ref()[overlap_len as usize..]);
+
+            self.data
+                .extend_from_slice(&(value.len() as u16).to_be_bytes());
+            self.data.extend_from_slice(value);
         }
         true
     }

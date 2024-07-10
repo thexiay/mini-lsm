@@ -5,7 +5,7 @@ use std::{cmp::Ordering, sync::Arc};
 
 use bytes::Buf;
 
-use crate::key::{Key, KeySlice, KeyVec};
+use crate::key::{KeySlice, KeyVec};
 
 use super::Block;
 
@@ -44,7 +44,8 @@ impl BlockIterator {
 
     /// Creates a block iterator and seek to the first key that >= `key`.
     pub fn create_and_seek_to_key(block: Arc<Block>, key: KeySlice) -> Self {
-        let mut block_iter = BlockIterator::new(block);
+        // notice that seek key and constuct key may use first_key, so we must fill first key firstly
+        let mut block_iter = Self::create_and_seek_to_first(block);
         block_iter.seek_to_key(key);
         block_iter
     }
@@ -58,11 +59,16 @@ impl BlockIterator {
         }
 
         let key_offset = *self.block.offsets.get(idx).unwrap() as usize;
-        let key_len = (&self.block.data[key_offset..key_offset + 2]).get_u16();
-        self.key = KeyVec::from_vec(
-            self.block.data[key_offset + 2..key_offset + 2 + key_len as usize].to_vec(),
+        let key_overlap_len = (&self.block.data[key_offset..key_offset + 2]).get_u16();
+        let rest_key_len = (&self.block.data[key_offset + 2..key_offset + 4]).get_u16();
+        let mut key = vec![];
+        key.extend_from_slice(&self.first_key.raw_ref()[0..key_overlap_len as usize]);
+        key.extend_from_slice(
+            &self.block.data[key_offset + 4..key_offset + 4 + rest_key_len as usize],
         );
-        let value_offset = key_offset + 2 + key_len as usize;
+        self.key = KeyVec::from_vec(key);
+
+        let value_offset = key_offset + 4 + rest_key_len as usize;
         let value_len = (&self.block.data[value_offset..value_offset + 2]).get_u16();
         self.value_range = (value_offset + 2, value_offset + 2 + value_len as usize);
     }
@@ -97,7 +103,6 @@ impl BlockIterator {
     /// Note: You should assume the key-value pairs in the block are sorted when being added by
     /// callers.
     pub fn seek_to_key(&mut self, key: KeySlice) {
-        // 二分查找
         let mut l = 0;
         let mut r = self.block.offsets.len();
         while l < r {
@@ -107,16 +112,11 @@ impl BlockIterator {
                 break;
             }
             // get mid key
-            let key_offset = *self.block.offsets.get(mid).unwrap() as usize;
-            let key_len = (&self.block.data[key_offset..key_offset + 2]).get_u16();
-            let mid_key = Key::from_slice(
-                &self.block.data[key_offset + 2..key_offset + 2 + key_len as usize],
-            );
-            match mid_key.partial_cmp(&key) {
-                Some(Ordering::Less) => l = mid + 1,
-                Some(Ordering::Greater) => r = mid,
-                Some(Ordering::Equal) => r = mid,
-                None => panic!("{:?} and {:?} cannot be compared", mid_key, key),
+            self.seek_to_idx(mid);
+            match self.key().cmp(&key) {
+                Ordering::Less => l = mid + 1,
+                Ordering::Greater => r = mid,
+                Ordering::Equal => r = mid,
             }
         }
         self.seek_to_idx(l);

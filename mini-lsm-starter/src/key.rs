@@ -4,7 +4,7 @@ use bytes::Bytes;
 
 pub const TS_ENABLED: bool = false;
 
-pub struct Key<T: AsRef<[u8]>>(T);
+pub struct Key<T>(T);
 
 pub type KeySlice<'a> = Key<&'a [u8]>;
 pub type KeyVec = Key<Vec<u8>>;
@@ -25,6 +25,17 @@ impl<T: AsRef<[u8]>> Key<T> {
 
     pub fn for_testing_ts(self) -> u64 {
         0
+    }
+
+    pub fn prefix_length(&self, other_key: &[u8]) -> usize {
+        let key = self.0.as_ref();
+        let min_len = key.len().min(other_key.len());
+        for i in 0..min_len {
+            if key[i] != other_key[i] {
+                return i;
+            }
+        }
+        min_len
     }
 }
 
