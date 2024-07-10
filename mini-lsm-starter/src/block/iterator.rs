@@ -3,7 +3,7 @@
 
 use std::{cmp::Ordering, sync::Arc};
 
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 
 use crate::key::{KeySlice, KeyVec};
 
@@ -62,10 +62,8 @@ impl BlockIterator {
         let key_overlap_len = (&self.block.data[key_offset..key_offset + 2]).get_u16();
         let rest_key_len = (&self.block.data[key_offset + 2..key_offset + 4]).get_u16();
         let mut key = vec![];
-        key.extend_from_slice(&self.first_key.raw_ref()[0..key_overlap_len as usize]);
-        key.extend_from_slice(
-            &self.block.data[key_offset + 4..key_offset + 4 + rest_key_len as usize],
-        );
+        key.put(&self.first_key.raw_ref()[0..key_overlap_len as usize]);
+        key.put(&self.block.data[key_offset + 4..key_offset + 4 + rest_key_len as usize]);
         self.key = KeyVec::from_vec(key);
 
         let value_offset = key_offset + 4 + rest_key_len as usize;
