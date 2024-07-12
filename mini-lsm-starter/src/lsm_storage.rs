@@ -424,11 +424,8 @@ impl LsmStorageInner {
         };
 
         let sst_builder = SsTableBuilder::default();
-        let sst = flush_imm_memtable.flush(
-            sst_builder,
-            self.path
-                .join(format!("{:10}.sst", flush_imm_memtable.id())),
-        )?;
+        let sst =
+            flush_imm_memtable.flush(sst_builder, self.path_of_sst(flush_imm_memtable.id()))?;
 
         {
             let _guard = self.state_lock.lock();
